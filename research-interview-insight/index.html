@@ -1027,6 +1027,7 @@ ${constraint ? `\n[사용자가 요구한 조건] ${constraint}\n조건과 관�
         step: -1,
         isAnalyzing: false,
         loadingMsg: "",
+        loadingSub: "",
         errorMsg: null,
         editingQuestionId: null,
         ...blankProject()
@@ -1109,20 +1110,27 @@ ${constraint ? `\n[사용자가 요구한 조건] ${constraint}\n조건과 관�
         throw new Error("AI 응답을 JSON으로 해석하지 못했습니다. 다시 시도해 주세요.");
       }
 
-      async function callGemini(systemPrompt, userPrompt) {
+      async function callGemini(systemPrompt, userPrompt, opts = {}) {
         const controller = new AbortController();
         activeController = controller;
-        const delays = [2000, 5000, 10000, 20000];
+        const delays = [2000, 5000, 10000, 20000].slice(0, opts.retries ?? 4);
+        const TIMEOUT_MS = opts.timeoutMs || 90000;
         const models = [CONFIG.MODEL_NAME, "gemini-flash-lite-latest"];
         let lastError = "알 수 없는 오류가 발생했습니다.";
 
         for (let i = 0; i <= delays.length; i++) {
+          // 요청 하나가 너무 오래 응답이 없으면 끊고 재시도/다음 단계로 넘어갑니다.
+          const attempt = new AbortController();
+          let timedOut = false;
+          const onCancel = () => attempt.abort();
+          controller.signal.addEventListener("abort", onCancel);
+          const timer = setTimeout(() => { timedOut = true; attempt.abort(); }, TIMEOUT_MS);
           try {
             const res = await fetch(
               `https://generativelanguage.googleapis.com/v1beta/models/${models[i % models.length]}:generateContent?key=${encodeURIComponent(state.apiKey || "")}`,
               {
                 method: "POST",
-                signal: controller.signal,
+                signal: attempt.signal,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   contents: [{ parts: [{ text: userPrompt }] }],
@@ -1159,7 +1167,8 @@ ${constraint ? `\n[사용자가 요구한 조건] ${constraint}\n조건과 관�
             return parseModelJson(text);
 
           } catch (err) {
-            if (err.name === "AbortError") { const e = new Error("__aborted__"); e.aborted = true; throw e; }
+            if (err.name === "AbortError" && !timedOut) { const e = new Error("__aborted__"); e.aborted = true; throw e; }
+            if (timedOut) err = new Error("응답이 너무 오래 걸려 요청을 중단했습니다. 잠시 후 다시 시도해 주세요.");
             const netErr = err instanceof TypeError || /failed to fetch|network|load failed/i.test(err.message || "");
             lastError = netErr ? "연결이 끊겼습니다. 화면을 켜 둔 채 이 탭에 머물러 주세요. Wi-Fi 연결 후 다시 시도하면 더 안정적입니다." : err.message;
             if (err.fatal || i === delays.length) break;
@@ -1167,6 +1176,9 @@ ${constraint ? `\n[사용자가 요구한 조건] ${constraint}\n조건과 관�
               await new Promise(r => { const h = () => { if (document.visibilityState === "visible") { document.removeEventListener("visibilitychange", h); r(); } }; document.addEventListener("visibilitychange", h); });
             }
             await new Promise(r => setTimeout(r, netErr ? Math.max(delays[i], 3000) : delays[i]));
+          } finally {
+            clearTimeout(timer);
+            controller.signal.removeEventListener("abort", onCancel);
           }
         }
         throw new Error(lastError);
@@ -1174,7 +1186,7 @@ ${constraint ? `\n[사용자가 요구한 조건] ${constraint}\n조건과 관�
 
       // 로딩 상태 + 오류 처리를 한 곳에서 담당 (기존: errorMsg를 세팅해도 화면에 표시되지 않았음)
       async function withLoading(msg, fn) {
-        setState({ isAnalyzing: true, loadingMsg: msg, errorMsg: null });
+        setState({ isAnalyzing: true, loadingMsg: msg, loadingSub: "", errorMsg: null });
         try {
           const out = await fn();
           setState({ isAnalyzing: false });
@@ -1432,7 +1444,7 @@ ${constraint ? `\n[사용자가 요구한 조건] ${constraint}\n조건과 관�
 
       function snapshot() {
         // 원본 데이터(nemoRows/nemoFields/nemoPool)는 용량이 커서 저장하지 않습니다.
-        const { apiKey, step, isAnalyzing, loadingMsg, errorMsg, editingQuestionId, nemoRows, nemoFields, nemoPool, nemoHandle, nemoPending, ...data } = state;
+        const { apiKey, step, isAnalyzing, loadingMsg, loadingSub, errorMsg, editingQuestionId, nemoRows, nemoFields, nemoPool, nemoHandle, nemoPending, ...data } = state;
         return data;
       }
       function hasContent() {
@@ -1860,14 +1872,14 @@ ${constraint ? `\n[사용자가 요구한 조건] ${constraint}\n조건과 관�
 
             for (let i = 0; i < total; i++) {
               const batch = pool.slice(i * size, i * size + size);
-              setState({ loadingMsg: "타겟 후보를 유형별로 분류하는 중" });
+              setState({ loadingMsg: `타겟 후보를 유형별로 분류하는 중 (${i + 1}/${total})`, loadingSub: "후보 수에 따라 3~5분 정도 걸릴 수 있습니다. 화면을 켜 둔 채 기다려 주세요." });
               const payload = batch.map(row => ({
                 personaId: nemoRowId(row),
                 personaName: nemoPersonaName(row),
                 data: nemoPayload(row, fields, 300)
               }));
               try {
-                evals.push(...normNemoEvals(await callGemini(NEMO_PROMPTS.CLASSIFY_SYS(constraintText), NEMO_PROMPTS.CLASSIFY_USER(analysis, payload, constraintText))));
+                evals.push(...normNemoEvals(await callGemini(NEMO_PROMPTS.CLASSIFY_SYS(constraintText), NEMO_PROMPTS.CLASSIFY_USER(analysis, payload, constraintText), { retries: 1 })));
               } catch (err) {
                 if (err && err.aborted) throw err;
                 failed++;
@@ -3279,7 +3291,7 @@ ${constraint ? `\n[사용자가 요구한 조건] ${constraint}\n조건과 관�
           html += `<div class="fixed inset-0 z-[10000] bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center px-8 text-center max-w-[430px] mx-auto animate-fade-in" role="status" aria-live="polite">
             <div class="spinner-ring mb-8" role="presentation"></div>
             <h2 class="t-h2 text-slate-900 mb-2">${esc(state.loadingMsg)}</h2>
-            <p class="t-small text-slate-600 mb-8">최대 1분 정도 걸릴 수 있습니다</p>
+            <p class="t-small text-slate-600 mb-8">${esc(state.loadingSub || "최대 1분 정도 걸릴 수 있습니다")}</p>
             <button type="button" onclick="Actions.cancel()" class="px-7 py-3.5 rounded-2xl border-2 border-slate-300 text-slate-700 font-bold t-small hover:bg-slate-50 active:scale-95 transition-all">취소</button>
           </div>`;
         }
