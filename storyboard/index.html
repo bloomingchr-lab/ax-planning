@@ -189,11 +189,11 @@ a{color:inherit}[hidden]{display:none!important}
 .px-box{display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f8fafc;color:#94a3b8;font-size:13px;text-align:center}
 .px-box img{display:block}
 
-.px-contact{font-size:0}
-.px-cell{display:inline-block;vertical-align:top;border:1px solid #e2e8f0;background:#fff;overflow:hidden}
+.px-contact{display:flex;flex-wrap:wrap;align-content:flex-start}
+.px-cell{display:block;flex:0 0 auto;border:1px solid #e2e8f0;background:#fff;overflow:hidden}
 .px-cap{display:flex;gap:8px;align-items:baseline;padding:8px 10px;border-top:1px solid #e2e8f0;overflow:hidden}
 .px-cap b{font-size:13px;font-weight:900;color:#2563eb;letter-spacing:.04em;flex:0 0 auto}
-.px-cap span{font-size:13px;line-height:1.45;color:#475569;overflow:hidden}
+.px-cap span{font-size:13px;line-height:1.5;color:#475569;overflow:hidden}
 
 .px-row{display:flex;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid #f1f5f9}
 .px-row h3{margin:0 0 7px;font-size:17px;font-weight:900;color:#2563eb;letter-spacing:.04em}
@@ -1144,7 +1144,7 @@ async function buildPdfPages() {
       '<section class="px-page">' +
         (i === 0
           ? '<div style="height:' + (HEAD_H + BODY_TOP) + 'px">' +
-              '<h1 class="px-cover-title">Storyboard<br>Maker</h1></div>' +
+              '<h1 class="px-cover-title">Storyboard Maker</h1></div>' +
             '<p class="px-cover-sub">' + esc(styleOf().label) + ' · ' + scenes.length + '컷 · ' + esc(stamp()) + '</p>' +
             '<p class="px-scenario" style="max-height:' + (AREA_H - 60) + 'px">' + esc(chunk) + '</p>'
           : pxHead('Project Scenario', 'Continued') +
@@ -1157,7 +1157,7 @@ async function buildPdfPages() {
   if (scenes.length) {
     const cols = scenes.length <= 2 ? 2 : scenes.length <= 6 ? 3 : 4;
     const rows = Math.ceil(scenes.length / cols);
-    const GAP = 16, CAP_H = 44, BORDER = 2;
+    const GAP = 16, CAP_H = 56, BORDER = 2;
     const cellW = Math.floor((AREA_W - GAP * (cols - 1)) / cols);
     const cellH = Math.floor((AREA_H - GAP * (rows - 1)) / rows);
     const boxW = cellW - BORDER;
