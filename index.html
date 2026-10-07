@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Design Research & Insight with AI</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Toast 애니메이션 */
+        .toast-enter {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .toast-exit {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        /* 버튼 터치 하이라이트 제거 */
+        button, a {
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen text-[110%]">
+    
+    <div class="max-w-md mx-auto p-4 space-y-7 pb-26">
+        
+        <header class="py-7 text-center">
+            <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight md:text-3xl">Design Research & Insight with AI</h1>
+        </header>
+
+        <!-- 1. 프로그램 링크 -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-blue-50 px-4 py-3.5 border-b border-slate-200">
+                <h2 class="text-lg font-bold text-slate-800 text-center">1. 프로그램 링크</h2>
+            </div>
+            <div class="p-4 flex flex-col gap-3.5">
+                <a href="youtube-collector/" target="_blank" class="flex justify-center items-center w-full p-4 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-blue-700 font-semibold rounded-xl transition-colors text-center text-base border border-slate-200">
+                    YOUTUBE voice collector
+                </a>
+                <a href="user-voice-analysis/" target="_blank" class="flex justify-center items-center w-full p-4 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-blue-700 font-semibold rounded-xl transition-colors text-center text-base border border-slate-200">
+                    User voice analysis
+                </a>
+                <a href="nemotron-personas-collector/" target="_blank" class="flex justify-center items-center w-full p-4 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-blue-700 font-semibold rounded-xl transition-colors text-center text-base border border-slate-200">
+                    Nemotron-Personas collector
+                </a>
+                <a href="research-interview-insight/" target="_blank" class="flex justify-center items-center w-full p-4 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-blue-700 font-semibold rounded-xl transition-colors text-center text-base border border-slate-200">
+                    Design Research Interview
+                </a>
+                <a href="storyboard/" target="_blank" class="flex justify-center items-center w-full p-4 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-blue-700 font-semibold rounded-xl transition-colors text-center text-base border border-slate-200">
+                    AI Storyboard Maker
+                </a>
+                <a href="report-builder/" target="_blank" class="flex flex-col justify-center items-center w-full p-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold rounded-xl transition-colors text-center text-base">
+                    AI Report Builder
+                    <span class="text-xs font-normal text-blue-100 mt-1">결과 파일을 하나의 문서로 종합</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- 2. API -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-blue-50 px-4 py-3.5 border-b border-slate-200">
+                <h2 class="text-lg font-bold text-slate-800 text-center">2. API 관리</h2>
+            </div>
+            <div class="p-4 flex flex-col gap-4">
+                <div class="flex flex-col gap-3.5 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <label for="api-textarea" class="font-bold text-slate-800 text-base text-center block">
+                        API를 입력하세요
+                    </label>
+                    <div class="relative w-full">
+                        <!-- 뒤에서 마스킹된 값(*)을 사용자에게 보여주는 레이어 -->
+                        <textarea id="api-masked" rows="2" readonly tabindex="-1" class="absolute inset-0 w-full px-3 py-2.5 bg-white border-2 border-slate-400 rounded-lg text-base text-slate-700 shadow-sm text-center resize-none leading-relaxed pointer-events-none"></textarea>
+                        
+                        <!-- 앞에서 투명하게 입력을 받는 실제 레이어 (커서는 보이게 설정) -->
+                        <textarea id="api-textarea" rows="2" 
+                                  oninput="updateMask(this)" 
+                                  onfocus="document.getElementById('api-masked').classList.add('border-blue-500'); document.getElementById('api-masked').classList.remove('border-slate-400')" 
+                                  onblur="document.getElementById('api-masked').classList.remove('border-blue-500'); document.getElementById('api-masked').classList.add('border-slate-400')" 
+                                  class="relative w-full px-3 py-2.5 bg-transparent border-2 border-transparent text-base text-transparent caret-slate-800 focus:outline-none text-center resize-none leading-relaxed"></textarea>
+                    </div>
+                    <div class="flex gap-2 w-full mt-1">
+                        <button onclick="copyLineFromInput(1, '유투브 전용 API가 복사되었습니다.')" class="flex-1 flex justify-center items-center py-3 bg-blue-600 text-white text-sm font-bold rounded-lg active:bg-blue-700 transition-colors shadow-sm">유투브 API 복사</button>
+                        <button onclick="copyLineFromInput(2, '제미나이 API가 복사되었습니다.')" class="flex-1 flex justify-center items-center py-3 bg-blue-600 text-white text-sm font-bold rounded-lg active:bg-blue-700 transition-colors shadow-sm">제미나이 API 복사</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- 토스트 메시지 컨테이너 -->
+    <div id="toast" class="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-6 py-3.5 rounded-full shadow-xl text-base font-medium transition-all duration-300 pointer-events-none toast-exit flex items-center gap-2 z-50">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+        </svg>
+        <span id="toast-message">복사되었습니다.</span>
+    </div>
+
+    <script>
+        let toastTimeout;
+        let inputAlertTimeout;
+
+        // 마스킹 업데이트 함수 (줄바꿈 문자는 유지하고 모든 글자를 *로 교체)
+        function updateMask(el) {
+            const masked = document.getElementById('api-masked');
+            masked.value = el.value.replace(/[^\n]/g, '*');
+
+            // API 입력 감지 시 확인 메시지 출력 (사용자가 입력을 멈춘 뒤 1초 후에 실행)
+            if (el.value.trim() !== "") {
+                clearTimeout(inputAlertTimeout);
+                inputAlertTimeout = setTimeout(() => {
+                    showToast("API가 입력되었습니다.");
+                }, 1000);
+            }
+        }
+
+        // 특정 줄의 텍스트를 추출하여 복사하는 함수
+        function copyLineFromInput(lineNumber, successMessage) {
+            const textarea = document.getElementById('api-textarea');
+            const lines = textarea.value.split('\n');
+            
+            const targetLine = lines[lineNumber - 1] ? lines[lineNumber - 1].trim() : '';
+            
+            if (!targetLine) {
+                showToast(`${lineNumber}번째 줄에 해당되는 API 키를 입력해 주세요.`);
+                return;
+            }
+            
+            copyToClipboard(targetLine, successMessage);
+        }
+
+        // 텍스트 클립보드 복사 함수
+        function copyToClipboard(text, successMessage) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'absolute';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+
+            try {
+                document.execCommand('copy');
+                showToast(successMessage);
+            } catch (err) {
+                console.error('복사 실패:', err);
+                showToast('복사에 실패했습니다. 기기 설정을 확인해주세요.');
+            }
+
+            document.body.removeChild(textarea);
+        }
+
+        // 토스트 알림 표시 함수
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            
+            toastMessage.textContent = message;
+            
+            toast.classList.remove('toast-exit');
+            toast.classList.add('toast-enter');
+
+            if(toastTimeout) {
+                clearTimeout(toastTimeout);
+            }
+
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('toast-enter');
+                toast.classList.add('toast-exit');
+            }, 2500);
+        }
+    </script>
+</body>
+</html>

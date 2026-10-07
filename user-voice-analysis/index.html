@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>User Voice Analysis & Design Insight</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+  <style>
+    :root{
+      --green-950:#052e2b; --green-900:#064e3b; --green-800:#065f46; --green-700:#047857;
+      --green-600:#059669; --green-500:#10b981; --green-100:#d1fae5; --green-50:#ecfdf5;
+    }
+    html { -webkit-text-size-adjust:100%; }
+    body {
+      margin:0; font-family:'Pretendard',-apple-system,BlinkMacSystemFont,sans-serif;
+      -webkit-tap-highlight-color:transparent; background:#dbe3df; color:#10231d;
+      font-size:17px; line-height:1.78; word-break:keep-all; overflow-wrap:break-word;
+    }
+    body * { font-size:inherit; box-sizing:border-box; }
+    body .t-display{font-size:36px;line-height:1.15;font-weight:800;letter-spacing:-.025em}
+    body .t-h1{font-size:26px;line-height:1.35;font-weight:800;letter-spacing:-.015em}
+    body .t-h2{font-size:22px;line-height:1.4;font-weight:800;letter-spacing:-.01em}
+    body .t-h3{font-size:19px;line-height:1.5;font-weight:700}
+    body .t-body{font-size:17px;line-height:1.8;font-weight:400}
+    body .t-small{font-size:16px;line-height:1.72}
+    body .t-meta{font-size:16px;line-height:1.62}
+    body .t-label{font-size:16px;font-weight:800;letter-spacing:.055em;text-transform:uppercase}
+    body .prose-ko{text-align:left;white-space:pre-line}
+    .no-scrollbar::-webkit-scrollbar{display:none}.no-scrollbar{-ms-overflow-style:none;scrollbar-width:none}
+    @keyframes fade-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .animate-fade-in{animation:fade-in .35s ease-out forwards}
+    @keyframes scale-in{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+    .animate-scale-in{animation:scale-in .18s ease-out forwards}
+    @keyframes spinner-rotate{to{transform:rotate(360deg)}}
+    .spinner-ring{width:84px;height:84px;border-radius:50%;border:7px solid #dbe7e1;border-top-color:var(--green-700);border-right-color:var(--green-700);animation:spinner-rotate .9s linear infinite;will-change:transform}
+    :focus-visible{outline:3px solid var(--green-600);outline-offset:2px;border-radius:8px}
+    .dock{padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+    .dock-space{padding-bottom:calc(170px + env(safe-area-inset-bottom))}
+    .page-top{padding-top:124px}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .green-glow{background:radial-gradient(circle at 35% 15%,rgba(16,185,129,.32),transparent 38%),linear-gradient(160deg,#052e2b 0%,#062f26 46%,#041f1a 100%)}
+    .glass-green{background:rgba(236,253,245,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+    .evidence-stripe{border-left:4px solid #10b981}
+    .upload-zone{min-height:88px;border:3px solid var(--green-700);background:linear-gradient(135deg,#d1fae5 0%,#ecfdf5 100%);color:var(--green-950);box-shadow:0 8px 22px rgba(4,120,87,.18);transition:transform .16s ease,box-shadow .16s ease,background .16s ease}
+    .upload-zone:hover{background:#d1fae5;box-shadow:0 11px 28px rgba(4,120,87,.24)}
+    .upload-zone:active{transform:scale(.985)}
+    .upload-filename{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-all;line-height:1.45;text-align:center}
+    .case-title{font-size:22px!important;line-height:1.4!important;font-weight:800!important;letter-spacing:-.01em!important;-webkit-text-size-adjust:none;text-size-adjust:none}
+    @media(prefers-reduced-motion:reduce){*:not(.spinner-ring),*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}.spinner-ring{animation-duration:1.4s!important}}
+    body ::placeholder,body summary{font-size:inherit}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="toast-region" aria-live="polite" class="sr-only"></div>
+
+  <script type="module">
+  (function(){
+    "use strict";
+
+    const CONFIG = {
+      MODEL_NAME:"gemini-flash-latest",
+      SESSION_KEY_API:"voc_insight_api_key_v3",
+      PROJECTS_KEY:"voc_insight_projects_v3",
+      MAX_PROJECTS:5,
+      AUTOSAVE_MS:5000,
+      MAX_RECORDS:500,
+      MAX_FILE_BYTES:25*1024*1024
+    };
+
+    const STAGES=[
+      {n:1,label:"데이터 입력"},
+      {n:2,label:"전체 Voice Affinity"},
+      {n:3,label:"UX·제품디자인 선별 Affinity"},
+      {n:4,label:"근본 원인"},
+      {n:5,label:"컨셉 방향"}
+    ];
+    const PERSPECTIVES=["사용 불편 관점","기술 진화 관점","심미적 관점","비즈니스 관점"];
+
+    let seq=0;
+    const uid=(p)=>`${p||"id"}_${Date.now().toString(36)}_${(seq++).toString(36)}_${Math.random().toString(36).slice(2,6)}`;
+    const esc=(v)=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    const escAttr=esc;
+    const nowLabel=(t)=>new Date(t).toLocaleString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+    const cut=(s,n=100)=>{s=String(s??"").replace(/\s+/g," ").trim();return s.length>n?s.slice(0,n-1)+"…":s};
+
+    function toast(msg,tone){
+      const live=document.getElementById("toast-region"); if(live) live.textContent=msg;
+      const colors={ok:"bg-[#052e2b]",warn:"bg-amber-600",error:"bg-red-600",info:"bg-[#047857]"};
+      const el=document.createElement("div"); el.textContent=msg;
+      el.className=`fixed left-1/2 -translate-x-1/2 ${colors[tone]||colors.ok} text-white px-6 py-3.5 rounded-2xl font-bold z-[10001] animate-fade-in shadow-2xl max-w-[90vw] text-center t-small`;
+      el.style.bottom="calc(96px + env(safe-area-inset-bottom))"; document.body.appendChild(el); setTimeout(()=>el.remove(),2800);
+    }
+
+    const Store={
+      list(){try{const a=JSON.parse(localStorage.getItem(CONFIG.PROJECTS_KEY)||"[]");return Array.isArray(a)?a:[]}catch(e){console.warn(e);return[]}},
+      _write(list){try{localStorage.setItem(CONFIG.PROJECTS_KEY,JSON.stringify(list));return true}catch(e){return false}},
+      save(snapshot,meta){
+        let list=Store.list().filter(p=>p.id!==meta.id);
+        list.unshift({id:meta.id,title:meta.title,savedAt:Date.now(),data:snapshot});
+        list=list.slice(0,CONFIG.MAX_PROJECTS);
+        if(Store._write(list)) return {ok:true};
+        // 오래된 프로젝트부터 제거하되 현재 프로젝트의 VOC 근거는 절대 삭제하지 않습니다.
+        while(list.length>1){list.pop();if(Store._write(list)) return {ok:true,pruned:"oldest"}}
+        return {ok:false};
+      },
+      remove(id){return Store._write(Store.list().filter(p=>p.id!==id))}
+    };
+
+    function blankProject(){return{
+      projectId:uid("proj"),
+      rawText:"", records:[], sourceCount:0, sourceType:"text", sourceLabel:"직접 입력",
+      dataVersion:0,
+      overall:null, ux:null,
+      selectedUxId:null,
+      perspective:PERSPECTIVES[0],
+      rootCauses:[], selectedCauseId:null,
+      concepts:[],
+      expanded:{},
+      // 업로드 UI용 임시 메타데이터 (snapshot에서 제외)
+      importFileName:"", importSheetName:"", importHeaders:[], importSelectedColumn:""
+    }};
+
+    let state={apiKey:sessionStorage.getItem(CONFIG.SESSION_KEY_API)||"",step:-1,isAnalyzing:false,loadingMsg:"",errorMsg:null,evidenceModal:null,...blankProject()};
+    const drafts=Object.create(null);
+    window.setDraft=(id,v)=>{drafts[id]=v};
+    const draft=(id)=>id in drafts?drafts[id]:"";
+    window.draft=draft;
+    const draftOr=(id,fb)=>id in drafts?drafts[id]:(fb||"");
+    const clearDrafts=(...ids)=>ids.forEach(id=>delete drafts[id]);
+
+    function setState(patch){const prev=state.step;state={...state,...patch};window.__state=state;render(patch.step!==undefined&&patch.step!==prev)}
+    window.setState=setState;window.__state=state;
+
+    function invalidateFromData(){
+      state.overall=null;state.ux=null;state.selectedUxId=null;state.rootCauses=[];state.selectedCauseId=null;state.concepts=[];state.dataVersion++;
+    }
+    function invalidateFromOverall(){state.ux=null;state.selectedUxId=null;state.rootCauses=[];state.selectedCauseId=null;state.concepts=[]}
+    function invalidateFromUx(){state.selectedUxId=null;state.rootCauses=[];state.selectedCauseId=null;state.concepts=[]}
+    function invalidateFromRoot(){state.selectedCauseId=null;state.concepts=[]}
+
+    function systematicSample(rows,max){
+      if(rows.length<=max) return rows;
+      const out=[]; const step=(rows.length-1)/(max-1);
+      for(let i=0;i<max;i++) out.push(rows[Math.round(i*step)]);
+      return out;
+    }
+    function makeRecordsFromTexts(texts,metaRows){
+      const sourceCount=texts.length;
+      const indexed=texts.map((text,i)=>({text:String(text??"").trim(),meta:metaRows?metaRows[i]:null,sourceIndex:i})).filter(x=>x.text);
+      const sampled=systematicSample(indexed,CONFIG.MAX_RECORDS);
+      return {sourceCount,records:sampled.map((x,i)=>({id:`V${String(i+1).padStart(3,"0")}`,text:x.text,meta:x.meta||null,sourceIndex:x.sourceIndex}))};
+    }
+    function parseTextRecords(text){
+      const t=String(text||"").trim(); if(!t) return {sourceCount:0,records:[]};
+      const blocks=/\n\s*\n/.test(t)?t.split(/\n\s*\n+/):t.split(/\n+/);
+      return makeRecordsFromTexts(blocks.map(x=>x.replace(/\s*\n\s*/g," ").trim()).filter(Boolean));
+    }
+
+    function numberedVOC(records){return records.map(r=>`[${r.id}] ${r.text}`).join("\n")}
+    function evidenceByIds(ids){
+      const set=new Set(Array.isArray(ids)?ids:[]);return state.records.filter(r=>set.has(r.id));
+    }
+    function normalizeIds(v){
+      const arr=Array.isArray(v)?v:String(v||"").split(/[,\s]+/); const valid=new Set(state.records.map(r=>r.id));
+      return [...new Set(arr.map(x=>String(x).trim().toUpperCase()).filter(x=>valid.has(x)))];
+    }
+    function coverageOf(groups,key="evidenceIds"){
+      const seen=new Map();
+      (groups||[]).forEach(g=>normalizeIds(g[key]).forEach(id=>seen.set(id,(seen.get(id)||0)+1)));
+      const all=state.records.map(r=>r.id); const assigned=all.filter(id=>seen.has(id)); const dup=all.filter(id=>(seen.get(id)||0)>1); const miss=all.filter(id=>!seen.has(id));
+      return {total:all.length,assigned:assigned.length,duplicate:dup.length,unassigned:miss.length,unassignedIds:miss,duplicateIds:dup,rate:all.length?Math.round(assigned.length/all.length*100):0};
+    }
+
+    const PROMPTS={
+      OVERALL:(records,note)=>`You are a Senior UX Researcher specializing in affinity diagramming.\n\n[RAW VOC DATA]\n${numberedVOC(records)}\n\n${note?`[REVISION REQUEST]\n${note}\n`:""}
+Perform a bottom-up affinity analysis of ALL provided Voice data. Cluster Voices only by similarity of meaning, experience, and expressed concern. Do not begin with or force any predetermined category framework such as UX, product design, technology, business, positive/negative, or feature type. Every VOC ID must be assigned to exactly one inductively discovered affinity cluster. Do not filter out any Voice, invent evidence, or paraphrase evidence IDs.
+Rules:
+- Use Korean, clear professional language.
+- itemName: identify the single primary product, service, space, or experience being analyzed. Use a concise Korean item noun such as "냉장고", "건조기", or "모바일 뱅킹 앱". Do not use an issue, symptom, component, or design concept as itemName.
+- executiveSummary: 4-5 sentences describing major patterns and tensions.
+- Create 5-7 affinity clusters when the data supports that range; use fewer only when the dataset is small or clearly concentrated.
+- Each cluster needs a concise inductive name, 3-4 sentence summary, and evidenceIds containing only provided IDs.
+- Every provided ID must appear exactly once across all clusters. If ambiguous, choose the single most similar cluster.
+- No markdown bold.
+Return ONLY JSON:
+{"itemName":"대표 아이템명","executiveSummary":"...","clusters":[{"name":"...","summary":"...","evidenceIds":["V001","V002"]}]}`,
+
+      UX:(records,note)=>`당신은 시니어 UX 리서처이자 제품디자인 리서처입니다. 이 분석은 전체 원문 VOC를 대상으로 수행하는 독립 분석입니다. 1단계 Affinity 결과를 참조·상속·재분류하거나 재현하지 마세요.\n\n[전체 원문 VOC]\n${numberedVOC(records)}\n\n${note?`[수정 요청]\n${note}\n`:""}
+먼저 모든 Voice를 검토하여 UX디자인 또는 제품디자인과 직접 관련된 Voice만 선별하세요. 그다음 선별된 Voice만 사용해 사전 카테고리 없이 의미 유사성에 따른 새로운 상향식 Affinity 분석을 수행하세요.
+필수 규칙:
+- 원문이 영어 또는 다른 언어여도 모든 분석 결과 값은 자연스럽고 전문적인 한국어로 작성하세요.
+- 군집명, summary, designImplication, overallSummary에 영어 문장이나 영문 컨셉명을 사용하지 마세요. VOC ID, 불가피한 제품명, UX/UI 같은 일반 약어만 영문을 허용합니다.
+- JSON 속성명은 제시된 스키마의 영문을 그대로 유지하되, 사람이 읽는 모든 속성값은 한국어로 작성하세요.
+- UX디자인 관련성에는 사용성, 인터랙션, 정보구조, 작업 흐름, 이해도, 접근성, 피드백, 신뢰, 오류 예방, 사용자 경험이 포함됩니다.
+- 제품디자인 관련성에는 형태, 구조, 인간공학, 조작, 유지관리, 조립, 소재, 내구성, 안전, 치수, 제품과 사용자 간 상호작용이 포함됩니다.
+- 가격, 배송, 판촉, 일반적인 브랜드 감정 또는 무관한 서비스만 다루는 Voice는 구체적인 UX·제품디자인 시사점이 없는 한 제외하세요.
+- 관련 없는 Voice를 억지로 군집에 넣지 마세요. 선별된 Voice ID는 정확히 하나의 군집에만 포함하고, 제외된 Voice는 어떤 군집에도 포함하지 마세요.
+- 사실이나 근거 ID를 만들지 마세요. evidenceIds에는 제공된 ID만 사용하세요.
+- 선별 데이터가 뒷받침하면 4~7개의 UX·제품디자인 Affinity 군집을 만드세요.
+- summary는 선별 Voice에 근거한 UX·제품디자인 문제 또는 기회를 3~4문장으로 설명하세요.
+- designImplication은 최종 해결책이 아닌 문제 정의 수준의 디자인 시사점을 2~3문장으로 설명하세요.
+- overallSummary는 독립 선별 결과와 주요 UX·제품디자인 패턴을 4~5문장으로 설명하세요.
+아래 형식의 JSON만 반환하세요:
+{"overallSummary":"UX·제품디자인 관련 Voice의 주요 경향을 설명하는 한국어 요약","issues":[{"name":"한국어 군집명","summary":"한국어 분석 요약","designImplication":"한국어 디자인 시사점","evidenceIds":["V001"]}]}`,
+
+      ROOT:(issue,evidence,perspective,note)=>`You are a Senior Root Cause Analyst. Lens: ${perspective}.\n\n[SELECTED UX ISSUE]\nName: ${issue.name}\nSummary: ${issue.summary}\nDesign implication: ${issue.designImplication}\n\n[ACTUAL VOC EVIDENCE]\n${numberedVOC(evidence)}\n\n${note?`[REVISION REQUEST]\n${note}\n`:""}
+Create 3-5 distinct 5-Whys chains grounded in the evidence above.
+Critical rules:
+- Separate observed evidence from inference. Do not present an inferred cause as a quoted user fact.
+- evidenceIds must list the VOCs that support the chain.
+- Each chain must have exactly 5 steps. Each step has why, answer, insight.
+- realCause must be a concise root-cause hypothesis, not a fabricated fact.
+- confidence is "높음", "중간", or "낮음" based on evidence strength.
+Return ONLY JSON:
+{"rootCauses":[{"id":1,"title":"...","evidenceIds":["V001"],"chain":[{"why":"왜 ...?","answer":"...","insight":"..."},{"why":"...","answer":"...","insight":"..."},{"why":"...","answer":"...","insight":"..."},{"why":"...","answer":"...","insight":"..."},{"why":"...","answer":"...","insight":"..."}],"realCause":"...","confidence":"중간"}]}`,
+
+      CONCEPT:(issue,evidence,cause,perspective,note)=>`당신은 시니어 UX 전략 컨설턴트입니다. 분석 관점은 ${perspective}입니다.\n\n[선택한 UX 이슈]\n${issue.name}: ${issue.summary}\n\n[실제 VOC 근거]\n${numberedVOC(evidence)}\n\n[선택한 근본 원인 가설]\n${cause.realCause}\n근거 ID: ${(cause.evidenceIds||[]).join(", ")}\n\n${note?`[수정 요청]\n${note}\n`:""}
+서로 명확히 차별화된 디자인 컨셉 방향을 정확히 3개 제안하세요.
+필수 규칙:
+- 원문 Voice의 언어와 관계없이 모든 결과값을 자연스럽고 전문적인 한국어로 작성하세요.
+- title, coreValue, concept, userValue와 모든 actions에 영어 문장이나 영문 컨셉명을 사용하지 마세요. VOC ID, 불가피한 제품명, UX/UI 같은 일반 약어만 영문을 허용합니다.
+- JSON 속성명은 제시된 스키마의 영문을 그대로 유지하되, 사람이 읽는 모든 속성값은 한국어로 작성하세요.
+- 사용자 인용문을 만들지 마세요. evidenceIds는 제공된 VOC만 가리켜야 하며, 화면에는 실제 원문이 별도로 표시됩니다.
+- VOC 근거 → UX 이슈 → 근본 원인 가설 → 컨셉의 논리적 연결을 명확히 유지하세요.
+- 각 컨셉에는 title, coreValue 2~3문장, concept 4~5문장, userValue 2~3문장, 구체적인 actions 4개, evidenceIds를 포함하세요.
+- 일반적인 구호가 아니라 검증 가능한 디자인 가설로 제안하세요.
+아래 형식의 JSON만 반환하세요:
+{"concepts":[{"id":1,"title":"한국어 컨셉명","coreValue":"한국어 핵심 가치","concept":"한국어 디자인 컨셉 설명","userValue":"한국어 사용자 가치","actions":["한국어 실행 항목 1","한국어 실행 항목 2","한국어 실행 항목 3","한국어 실행 항목 4"],"evidenceIds":["V001"]}]}`
+    };
+
+    let activeController=null;
+    function parseModelJson(text){
+      let t=String(text||"").trim().replace(/^```(?:json)?\s*/i,"").replace(/```\s*$/i,"").trim();
+      try{return JSON.parse(t)}catch(e){}
+      const starts=[t.indexOf("{"),t.indexOf("[")].filter(i=>i>=0);const first=starts.length?Math.min(...starts):-1;const last=Math.max(t.lastIndexOf("}"),t.lastIndexOf("]"));
+      if(first>=0&&last>first){try{return JSON.parse(t.slice(first,last+1))}catch(e){}}
+      throw new Error("AI 응답을 JSON으로 해석하지 못했습니다. 다시 시도해 주세요.");
+    }
+    async function callGemini(prompt){
+      const controller=new AbortController(); activeController=controller; const delays=[2000,5000,10000,20000];const models=[CONFIG.MODEL_NAME,"gemini-flash-lite-latest"];let lastError="분석 요청에 실패했습니다.";
+      for(let i=0;i<=delays.length;i++){
+        try{
+          const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${models[i%models.length]}:generateContent?key=${encodeURIComponent(state.apiKey||"")}`,{
+            method:"POST",signal:controller.signal,headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:.45,maxOutputTokens:8192}})
+          });
+          if(!res.ok){const er=new Error(res.status===429?"요청이 많습니다. 잠시 후 다시 시도해 주세요.":res.status===503?"제미나이 서버가 혼잡합니다. 1~2분 뒤 다시 시도해 주세요.":`요청이 거부되었습니다 (상태 ${res.status}).`);er.fatal=[400,401,403,404].includes(res.status);throw er}
+          const data=await res.json();const cand=data?.candidates?.[0];if(cand?.finishReason==="MAX_TOKENS")throw new Error("응답이 최대 길이에 도달했습니다. 데이터 수를 줄이거나 다시 시도해 주세요.");
+          const text=cand?.content?.parts?.[0]?.text;if(!text)throw new Error("AI가 빈 응답을 반환했습니다.");return parseModelJson(text);
+        }catch(err){if(err.name==="AbortError"){const e=new Error("__aborted__");e.aborted=true;throw e}const netErr=err instanceof TypeError||/failed to fetch|network|load failed/i.test(err.message||"");lastError=netErr?"연결이 끊겼습니다. 화면을 켜 둔 채 이 탭에 머물러 주세요. Wi-Fi 연결 후 다시 시도하면 더 안정적입니다.":err.message;if(err.fatal||i===delays.length)break;if(document.visibilityState==="hidden"){await new Promise(r=>{const h=()=>{if(document.visibilityState==="visible"){document.removeEventListener("visibilitychange",h);r()}};document.addEventListener("visibilitychange",h)})}await new Promise(r=>setTimeout(r,netErr?Math.max(delays[i],3000):delays[i]))}
+      }
+      throw new Error(lastError);
+    }
+    const koreanCorrectionPrompt=(result)=>`You are a professional Korean UX writer. Convert only the human-readable values in the JSON below into natural professional Korean. Preserve the JSON structure, property names, numbers, VOC IDs, and evidenceIds exactly. Keep only unavoidable product names and common abbreviations such as UX/UI in English. Do not re-analyze the source data, add facts, remove content, or change evidence assignments. Return only the corrected JSON.\n\n[JSON TO CORRECT]\n${JSON.stringify(result)}`;
+    function englishDominant(v){const t=String(v||"").trim();if(!t)return false;const ko=(t.match(/[가-힣]/g)||[]).length,en=(t.match(/[A-Za-z]/g)||[]).length;return en>=12&&(ko<5||en>ko*1.2)}
+    function uxNeedsKorean(res){return [res?.overallSummary,...(Array.isArray(res?.issues)?res.issues.flatMap(x=>[x?.name,x?.summary,x?.designImplication]):[])].some(englishDominant)}
+    function conceptsNeedKorean(res){return (Array.isArray(res?.concepts)?res.concepts.flatMap(x=>[x?.title,x?.coreValue,x?.concept,x?.userValue,...(Array.isArray(x?.actions)?x.actions:[])]):[]).some(englishDominant)}
+    async function callKoreanJson(prompt,needsCorrection){let out=await callGemini(prompt);if(needsCorrection(out))out=await callGemini(koreanCorrectionPrompt(out));if(needsCorrection(out))throw new Error("분석 결과가 한국어로 생성되지 않았습니다. 다시 시도해 주세요.");return out}
+    async function withLoading(msg,fn){setState({isAnalyzing:true,loadingMsg:msg,errorMsg:null});try{const out=await fn();setState({isAnalyzing:false});return out}catch(err){if(err?.aborted){setState({isAnalyzing:false});toast("분석을 취소했습니다.","info");return null}console.error(err);setState({isAnalyzing:false,errorMsg:err.message||"분석에 실패했습니다."});return null}finally{activeController=null}}
+
+    function normOverall(res){
+      const cats=Array.isArray(res?.clusters)?res.clusters:Array.isArray(res?.categories)?res.categories:[]; if(!cats.length)throw new Error("전체 Affinity 군집을 생성하지 못했습니다.");
+      const categories=cats.map((c,i)=>({id:uid("cat"),name:String(c.name||`카테고리 ${i+1}`).trim(),summary:String(c.summary||"").trim(),evidenceIds:normalizeIds(c.evidenceIds)})).filter(c=>c.evidenceIds.length);
+      if(!categories.length)throw new Error("VOC 근거가 연결된 Affinity 군집을 찾지 못했습니다.");
+      return {itemName:cut(String(res.itemName||"").trim(),24),executiveSummary:String(res.executiveSummary||"").trim(),categories,quality:coverageOf(categories)};
+    }
+    function normUx(res){
+      const list=Array.isArray(res?.issues)?res.issues:[];if(!list.length)throw new Error("UX/Design 이슈를 생성하지 못했습니다.");
+      const used=new Set();
+      const issues=list.map((x,i)=>({id:uid("ux"),name:String(x.name||`UX/제품디자인 군집 ${i+1}`).trim(),summary:String(x.summary||"").trim(),designImplication:String(x.designImplication||"").trim(),evidenceIds:normalizeIds(x.evidenceIds).filter(id=>{if(used.has(id))return false;used.add(id);return true})})).filter(x=>x.evidenceIds.length);
+      if(!issues.length)throw new Error("UX·제품디자인 관련 Voice를 찾지 못했습니다.");
+      const selected=new Set(issues.flatMap(x=>x.evidenceIds));
+      return {overallSummary:String(res.overallSummary||"").trim(),issues,selectionStats:{total:state.records.length,selected:selected.size,excluded:Math.max(0,state.records.length-selected.size)}};
+    }
+    function normRoots(res){
+      const list=Array.isArray(res?.rootCauses)?res.rootCauses:[];if(!list.length)throw new Error("5Whys 결과를 생성하지 못했습니다.");
+      return list.map((x,i)=>({id:Number(x.id)||i+1,title:String(x.title||`원인 가설 ${i+1}`),evidenceIds:normalizeIds(x.evidenceIds),chain:(Array.isArray(x.chain)?x.chain:[]).slice(0,5).map((s,j)=>({why:String(s.why||`Why ${j+1}`),answer:String(s.answer||""),insight:String(s.insight||"")})),realCause:String(x.realCause||"").trim(),confidence:["높음","중간","낮음"].includes(x.confidence)?x.confidence:"중간"})).filter(x=>x.chain.length&&x.realCause&&x.evidenceIds.length);
+    }
+    function normConcepts(res){
+      const list=Array.isArray(res?.concepts)?res.concepts:[];if(!list.length)throw new Error("디자인 컨셉을 생성하지 못했습니다.");
+      return list.slice(0,3).map((x,i)=>({id:Number(x.id)||i+1,title:String(x.title||`컨셉 ${i+1}`),coreValue:String(x.coreValue||""),concept:String(x.concept||""),userValue:String(x.userValue||""),actions:(Array.isArray(x.actions)?x.actions:[]).map(String).slice(0,5),evidenceIds:normalizeIds(x.evidenceIds)}));
+    }
+
+    function snapshot(){const {apiKey,step,isAnalyzing,loadingMsg,errorMsg,evidenceModal,importFileName,importSheetName,importHeaders,importSelectedColumn,...data}=state;return data}
+    function hasContent(){return state.records.length>0||!!state.rawText.trim()||!!state.overall}
+    const PROJECT_ITEM_PATTERNS=[
+      ["로봇청소기",/(로봇\s*청소기|robot\s*vacuum)/gi],["냉장고",/(냉장고|refrigerator|fridge|freezer)/gi],["세탁기",/(세탁기|washing\s*machine|\bwasher\b)/gi],["건조기",/(건조기|tumble\s*dryer|heat\s*pump\s*dryer|\bdryer\b|ventless)/gi],["식기세척기",/(식기\s*세척기|dishwasher)/gi],["에어컨",/(에어컨|air\s*conditioner)/gi],["청소기",/(청소기|vacuum\s*cleaner)/gi],["전자레인지",/(전자\s*레인지|microwave)/gi],["오븐",/(오븐|\boven\b)/gi],["스마트폰",/(스마트폰|smartphone|mobile\s*phone)/gi],["태블릿",/(태블릿|\btablet\b)/gi],["노트북",/(노트북|\blaptop\b)/gi],["모니터",/(모니터|\bmonitor\b)/gi],["TV",/(텔레비전|\btelevision\b|\bTV\b)/g],["이어폰",/(이어폰|earbuds?|headphones?)/gi],["스피커",/(스피커|\bspeakers?\b)/gi],["자동차",/(자동차|\bvehicle\b|\bcar\b)/gi]
+    ];
+    function inferProjectItem(data){
+      const ai=String(data?.overall?.itemName||"").trim();if(ai)return cut(ai,24);
+      const corpus=(data?.records||[]).slice(0,240).map(r=>String(r?.text||"")).join(" ");let best="",bestCount=0;
+      PROJECT_ITEM_PATTERNS.forEach(([name,pattern])=>{pattern.lastIndex=0;const count=(corpus.match(pattern)||[]).length;if(count>bestCount){best=name;bestCount=count}});return best;
+    }
+    function projectTitleFor(data){
+      const item=inferProjectItem(data);let focus="";
+      if(data?.ux?.issues?.length)focus=String(data.ux.issues[0].name||"").trim();else if(data?.overall?.categories?.length)focus=String(data.overall.categories[0].name||"").trim();else if(data?.records?.[0])focus=cut(data.records[0].text,38);
+      if(!focus)return item?`${item} · VOC 분석`:"제목 없는 VOC 프로젝트";if(!item)return cut(focus,52);
+      if(focus.startsWith(item))return cut(focus,52);const cleaned=focus.replace(item,"").replace(/^[\s·:：\-–—]+/,"").trim();return cut(`${item} · ${cleaned||"VOC 분석"}`,52);
+    }
+    function projectTitle(){return projectTitleFor(state)}
+    let lastSaved="",quotaWarned=false;
+    function persist(force){if(state.step<1||!hasContent())return"skip";const snap=snapshot(),ser=JSON.stringify(snap);if(!force&&ser===lastSaved)return"skip";const r=Store.save(snap,{id:state.projectId,title:projectTitle()});if(r.ok){lastSaved=ser;if(r.pruned&&!quotaWarned){quotaWarned=true;toast("저장 공간 확보를 위해 가장 오래된 프로젝트를 정리했습니다.","warn")}return"ok"}if(!quotaWarned){quotaWarned=true;toast("저장 공간이 부족합니다. 오래된 프로젝트를 삭제해 주세요.","error")}return"full"}
+
+    function selectedUx(){return state.ux?.issues?.find(x=>x.id===state.selectedUxId)||null}
+    function selectedCause(){return state.rootCauses.find(x=>x.id===state.selectedCauseId)||null}
+    function stepReady(n){switch(n){case 1:return true;case 2:return !!state.overall;case 3:return !!state.ux;case 4:return state.rootCauses.length>0;case 5:return state.concepts.length>0;default:return false}}
+
+    function header(title,backStep){
+      const cur=STAGES.find(s=>s.n===state.step); const next=state.step+1; const showNext=STAGES.some(s=>s.n===next)&&stepReady(next); const pct=cur?Math.round(cur.n/STAGES.length*100):0;
+      return `<header class="fixed top-0 left-0 right-0 z-50 bg-white max-w-[430px] mx-auto border-b border-emerald-950/5">
+        <div class="px-3 h-14 flex items-center justify-between gap-1">
+          <div class="flex items-center gap-1 overflow-hidden flex-1 min-w-0">${backStep!==undefined?`<button type="button" aria-label="이전 단계" onclick="setState({step:${backStep}})" class="p-2.5 rounded-full hover:bg-emerald-50 text-slate-700 flex-shrink-0"><i data-lucide="chevron-left" class="w-6 h-6"></i></button>`:""}<h1 class="t-h3 truncate text-slate-900">${esc(title)}</h1></div>
+          <div class="flex items-center gap-0.5 flex-shrink-0 text-slate-700">${showNext?`<button type="button" aria-label="다음 단계" onclick="Actions.goNext()" class="p-2.5 rounded-full hover:bg-emerald-50 text-slate-900"><i data-lucide="chevron-right" class="w-6 h-6"></i></button>`:""}<button type="button" aria-label="저장" onclick="Actions.saveNow()" class="p-2.5 rounded-full hover:bg-emerald-50"><i data-lucide="save" class="w-6 h-6"></i></button><button type="button" aria-label="리포트 복사" onclick="Actions.copyReport()" class="p-2.5 rounded-full hover:bg-emerald-50"><i data-lucide="copy" class="w-6 h-6"></i></button><button type="button" aria-label="홈" onclick="Actions.goHome()" class="p-2.5 rounded-full hover:bg-emerald-50"><i data-lucide="home" class="w-6 h-6"></i></button></div>
+        </div>${cur?`<div class="px-4 pb-2 flex items-center gap-3"><div class="h-2 bg-slate-200 rounded-full flex-1 overflow-hidden"><div class="h-full bg-[#047857] rounded-full transition-all" style="width:${pct}%"></div></div><span class="t-meta font-bold text-slate-600 tabular-nums flex-shrink-0">${cur.n} / ${STAGES.length}</span></div>`:""}</header>`;
+    }
+    const dock=(inner)=>`<div class="fixed bottom-0 left-0 right-0 px-5 pt-5 dock glass-green border-t border-emerald-950/10 max-w-[430px] mx-auto z-[60] shadow-[0_-10px_40px_rgba(5,46,43,.08)]">${inner}</div>`;
+    const primaryBtn=(label,onclick,disabled)=>`<button type="button" ${disabled?"disabled":""} onclick="${onclick}" class="w-full py-5 rounded-2xl font-bold t-h3 text-white bg-[#052e2b] hover:bg-[#064e3b] disabled:bg-slate-200 disabled:text-slate-500 shadow-lg active:scale-[.98] disabled:active:scale-100 transition-all">${esc(label)}</button>`;
+    const reportDownloadBtn=()=>`<button type="button" onclick="Actions.downloadReport()" class="w-full px-5 py-4 rounded-2xl text-white bg-gradient-to-r from-[#052e2b] via-[#064e3b] to-[#047857] border-2 border-emerald-400/70 shadow-[0_12px_30px_rgba(5,46,43,.30)] active:scale-[.98] transition-all flex items-center gap-4 text-left"><span class="w-12 h-12 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center flex-shrink-0"><i data-lucide="file-down" class="w-7 h-7"></i></span><strong class="block t-h3 text-white">전체 리포트 텍스트 파일로 저장</strong></button>`;
+    function instructionBox(id,onSend,placeholder){return `<section class="p-5 bg-[#052e2b] rounded-3xl shadow-xl mt-8"><h3 class="t-label text-emerald-200 mb-3">AI 수정 지시</h3><textarea id="${id}" rows="3" oninput="setDraft('${id}',this.value)" class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3.5 text-white t-small outline-none resize-none placeholder:text-emerald-100/60 focus:border-emerald-400 mb-3" placeholder="${escAttr(placeholder)}">${esc(draft(id))}</textarea><button type="button" onclick="${onSend}" class="w-full py-4 rounded-xl bg-[#059669] hover:bg-[#047857] text-white font-bold t-small flex items-center justify-center gap-2 active:scale-95"><i data-lucide="send" class="w-5 h-5"></i>수정 요청 반영</button></section>`}
+    function perspectiveRow(){return `<div class="grid grid-cols-2 gap-2 mb-3" role="group">${PERSPECTIVES.map(p=>`<button type="button" onclick="Actions.changePerspective('${escAttr(p)}')" aria-pressed="${state.perspective===p}" class="py-3 rounded-xl font-bold t-meta border transition-all active:scale-95 ${state.perspective===p?"bg-[#052e2b] text-white border-[#052e2b] shadow-md":"bg-white text-slate-700 border-slate-300 hover:bg-emerald-50"}">${esc(p)}</button>`).join("")}</div>`}
+
+    function evidenceButton(ids,label){const n=normalizeIds(ids).length;return `<button type="button" onclick='Actions.showEvidence(${JSON.stringify(normalizeIds(ids))})' class="px-4 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 font-bold t-meta hover:bg-emerald-100 whitespace-nowrap">${esc(label||`${n}건 원문`)} </button>`}
+    function evidenceBlock(ids,max=3){const ev=evidenceByIds(ids).slice(0,max);if(!ev.length)return"";return `<div class="mt-5 space-y-2">${ev.map(r=>`<div class="evidence-stripe bg-slate-50 rounded-xl px-4 py-3"><span class="t-meta font-bold text-emerald-800">${r.id}</span><p class="t-small text-slate-700 mt-1">${esc(r.text)}</p></div>`).join("")}</div>`}
+
+    function viewAuth(){return `<div class="min-h-screen flex flex-col items-center justify-center px-8 py-16 bg-white text-center animate-fade-in"><div class="w-24 h-24 bg-[#064e3b] rounded-full flex items-center justify-center mb-10 shadow-[0_10px_24px_rgba(6,78,59,.28)]"><i data-lucide="scan-search" class="text-white w-12 h-12"></i></div><h1 class="t-display italic text-slate-900 mb-4">User Voice Insight Lab</h1><p class="t-small text-slate-600 font-bold mb-12">VOC에서 근본 원인과 디자인 컨셉까지 연결하는 5단계 분석 도구</p><div class="w-full space-y-4"><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="inline-block t-small text-emerald-800 font-bold underline underline-offset-4">개인 API 키 발급받기</a><input type="password" id="api-input" autocomplete="off" class="w-full p-5 bg-white border-2 border-slate-300 rounded-2xl text-center focus:border-emerald-700 outline-none t-h3 font-medium text-slate-900 placeholder:text-slate-500 placeholder:font-normal" placeholder="API 키를 붙여 넣으세요"><p class="t-meta text-slate-600">키는 현재 브라우저 탭의 sessionStorage에만 임시 보관되며 프로젝트에는 저장되지 않습니다.</p>${primaryBtn("시작하기","Actions.validateKey()")}</div></div>`}
+
+    function viewHome(){const projects=Store.list();return `<div class="flex flex-col min-h-screen text-white relative overflow-hidden green-glow"><div class="absolute top-[-20%] left-[-20%] w-[140%] h-[60%] bg-emerald-500 rounded-full blur-[120px] opacity-20"></div><div class="relative z-10 flex flex-col flex-1 px-7 pt-14 pb-10 justify-center gap-8"><div class="space-y-5"><span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 t-meta font-bold"><i data-lucide="sparkles" class="text-emerald-200 w-4 h-4"></i> VOC Intelligence</span><h1 class="t-display italic leading-tight">사용자의<br/>목소리에서<br/><span class="text-emerald-300">컨셉을 발견하세요</span></h1><p class="t-body text-emerald-50">1단계는 전체 Voice를 유사성만으로 군집화하고, 2단계는 전체 원문에서 UX·제품디자인 관련 Voice를 독립적으로 선별·군집화합니다. 이후 5Whys와 컨셉 방향을 실제 원문 ID로 연결합니다.</p></div><button type="button" onclick="Actions.startNewProject()" class="w-full bg-white text-[#052e2b] py-5 rounded-2xl font-bold t-h3 flex items-center justify-center gap-2 shadow-2xl active:scale-[.98] transition-all">새 분석 시작 <i data-lucide="arrow-right" class="w-5 h-5"></i></button><div><div class="flex items-center justify-between mb-3"><h2 class="t-label text-emerald-100">저장된 프로젝트 ${projects.length}/${CONFIG.MAX_PROJECTS}</h2><button type="button" onclick="Actions.resetApi()" class="t-meta text-emerald-100 underline underline-offset-4">API 키 변경</button></div>${projects.length?`<ul class="space-y-2">${projects.map(p=>`<li class="flex items-center gap-2 bg-white/10 border border-white/15 rounded-2xl px-4 py-3"><button type="button" onclick="Actions.openProject('${escAttr(p.id)}')" class="flex-1 text-left min-w-0"><span class="block t-small font-bold text-white truncate">${esc(p.data?projectTitleFor(p.data):p.title)}</span><span class="block t-meta text-emerald-100">${esc(nowLabel(p.savedAt))} · VOC ${(p.data?.records||[]).length}건</span></button><button type="button" aria-label="삭제" onclick="Actions.deleteProject('${escAttr(p.id)}')" class="p-2.5 rounded-full hover:bg-white/10 text-emerald-100"><i data-lucide="trash-2" class="w-5 h-5"></i></button></li>`).join("")}</ul>`:`<p class="t-small text-emerald-50 bg-white/5 border border-white/15 rounded-2xl px-4 py-5">아직 저장된 프로젝트가 없습니다. 데이터를 분석하면 진행 상태가 자동 저장됩니다.</p>`}</div></div></div>`}
+
+    function dataSourceSummary(){if(!state.records.length)return"";return `<section class="bg-emerald-50 border-2 border-emerald-200 rounded-3xl p-5 mb-6"><div class="flex items-center gap-3"><i data-lucide="database" class="w-6 h-6 text-emerald-800"></i><div><h3 class="t-h3 text-emerald-950">분석 데이터 준비 완료</h3><p class="t-small text-emerald-900">${esc(state.sourceLabel)} · 원본 ${state.sourceCount}건 중 ${state.records.length}건 분석${state.sourceCount>state.records.length?" · 전체 구간에서 균등 샘플링":""}</p></div></div></section>`}
+
+    function viewInput(){
+      return `<div class="page-top px-4 dock-space animate-fade-in">${header("데이터 입력")}
+        <h2 class="t-h1 text-slate-900 mb-3">사용자 Voice 데이터를 준비해 주세요</h2><p class="t-small text-slate-600 mb-7">직접 입력은 빈 줄이 있으면 문단 단위, 없으면 한 줄 단위로 VOC를 구분합니다. Excel/CSV는 분석할 시트와 VOC 열을 자동으로 찾아 적용합니다.</p>
+        <section class="bg-[#052e2b] rounded-[2rem] p-6 text-white shadow-xl mb-6"><h3 class="t-label text-emerald-200 mb-3">직접 입력</h3><textarea id="raw-input" rows="8" oninput="Actions.onRawInput(this.value)" class="w-full bg-white/10 border border-white/20 focus:border-emerald-400 rounded-2xl p-5 text-white outline-none t-small resize-none placeholder:text-emerald-100/50" placeholder="예: 메뉴 구조가 복잡해서 원하는 설정을 찾기 어려웠어요.\n\n알림이 너무 자주 떠서 중요한 알림도 무시하게 돼요.">${esc(state.rawText)}</textarea><button type="button" onclick="Actions.applyRawText()" class="w-full mt-4 py-4 rounded-xl bg-[#059669] hover:bg-[#047857] text-white font-bold">입력 데이터 적용</button></section>
+        <div class="flex items-center gap-3 my-5"><div class="h-px bg-slate-300 flex-1"></div><span class="t-meta font-bold text-slate-500">또는 파일 업로드</span><div class="h-px bg-slate-300 flex-1"></div></div>
+        <section class="bg-white rounded-[2rem] p-6 border-2 border-slate-200 shadow-md mb-6"><input type="file" id="file-up" class="hidden" accept=".xlsx,.xls,.csv,.txt" onchange="Actions.uploadFile(event)"><label for="file-up" class="upload-zone w-full px-5 py-5 rounded-2xl font-extrabold flex flex-col items-center justify-center gap-3 cursor-pointer text-center"><i data-lucide="upload-cloud" class="w-7 h-7 flex-shrink-0"></i><span class="upload-filename">${state.importFileName?esc(state.importFileName):"XLSX · XLS · CSV · TXT 업로드"}</span></label>
+        ${state.importFileName&&state.importSelectedColumn?`<div class="mt-4 px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-center"><p class="t-meta font-bold text-emerald-900">자동 인식 완료</p><p class="t-small text-emerald-800 break-all">${esc(state.importSheetName)} · ${esc(state.importSelectedColumn)}</p></div>`:""}</section>
+        ${dataSourceSummary()}
+        <section class="bg-white rounded-3xl p-5 border-2 border-slate-200 mb-6"><h3 class="t-h3 text-slate-900 mb-2">데이터 처리 원칙</h3><p class="t-small text-slate-600">500건 초과 시 앞부분 500건만 자르지 않고 데이터 전체 구간에서 균등하게 500건을 샘플링합니다. 각 VOC에는 V001 형태의 고유 ID를 부여해 최종 컨셉까지 근거를 추적합니다.</p></section>
+        ${dock(primaryBtn(state.records.length?`VOC ${state.records.length}건 분석 시작`:"먼저 데이터를 적용해 주세요","Actions.generateOverall()",!state.records.length))}
+      </div>`;
+    }
+
+    function viewOverall(){const o=state.overall;return `<div class="page-top px-4 dock-space animate-fade-in">${header("전체 Affinity 분석",1)}<h2 class="t-h1 text-slate-900 mb-3">전체 Voice 유사성 기반 Affinity 군집</h2><p class="t-small text-slate-600 mb-7">전체 Voice를 하나도 제외하지 않고, 사전 카테고리 없이 내용과 경험의 유사성만으로 상향식 군집화한 결과입니다.</p><section class="bg-[#052e2b] rounded-[2rem] p-7 text-white shadow-xl mb-7"><span class="inline-block px-3 py-1 bg-emerald-400/15 text-emerald-200 border border-emerald-300/20 rounded-lg t-label mb-4">ALL VOICE AFFINITY SUMMARY</span><p class="t-body text-emerald-50 prose-ko">${esc(o.executiveSummary)}</p></section><div class="space-y-4">${o.categories.map(c=>`<section class="bg-white rounded-[2rem] p-6 border-2 border-slate-200 shadow-md"><div class="flex items-start justify-between gap-3"><h3 class="t-h2 text-slate-900">${esc(c.name)}</h3>${evidenceButton(c.evidenceIds)}</div><p class="t-body text-slate-700 prose-ko mt-4">${esc(c.summary)}</p>${evidenceBlock(c.evidenceIds,2)}</section>`).join("")}</div>${instructionBox("overall-note","Actions.generateOverall(draft('overall-note'))","예: 사전 분류 기준 없이 Voice 간 의미 유사성만으로 다시 군집화해 주세요")}${dock(primaryBtn("UX·제품디자인 Voice 선별 분석","Actions.generateUx()"))}</div>`}
+
+    function viewUx(){const u=state.ux;const selected=new Set((u.issues||[]).flatMap(x=>x.evidenceIds||[])).size;const stats=u.selectionStats||{total:state.records.length,selected,excluded:Math.max(0,state.records.length-selected)};return `<div class="page-top px-4 dock-space animate-fade-in">${header("UX·제품디자인 Affinity",2)}<h2 class="t-h1 text-slate-900 mb-3">UX·제품디자인 관련 Voice 선별 Affinity</h2><p class="t-small text-slate-600 mb-5">1단계 결과와 별개로 전체 원문 Voice를 다시 검토하여 UX디자인·제품디자인과 직접 관련된 Voice만 선별하고, 그 안에서 유사성 기반으로 새롭게 군집화한 결과입니다.</p><section class="bg-emerald-50 border-2 border-emerald-200 rounded-3xl p-5 mb-6"><p class="t-label text-emerald-800 mb-1">독립 Voice 선별 결과</p><p class="t-h3 text-emerald-950">전체 ${stats.total}건 중 관련 Voice ${stats.selected}건 선별</p><p class="t-small text-emerald-800 mt-1">UX·제품디자인 비관련 Voice ${stats.excluded}건은 이 단계의 군집에서 제외했습니다.</p></section><section class="bg-[#052e2b] rounded-[2rem] p-7 text-white shadow-xl mb-7"><span class="inline-block px-3 py-1 bg-emerald-400/15 text-emerald-200 border border-emerald-300/20 rounded-lg t-label mb-4">UX·제품디자인 AFFINITY 종합</span><p class="t-body text-emerald-50 prose-ko">${esc(u.overallSummary)}</p></section><div class="space-y-4">${u.issues.map(x=>{const on=x.id===state.selectedUxId;return `<section class="bg-white rounded-[2rem] p-6 border-2 shadow-md transition-all ${on?"border-emerald-600 ring-2 ring-emerald-600/15":"border-slate-200"}"><div class="flex items-start justify-between gap-3"><h3 class="t-h2 text-slate-900">${esc(x.name)}</h3>${evidenceButton(x.evidenceIds)}</div><p class="t-body text-slate-700 prose-ko mt-3">${esc(x.summary)}</p><div class="mt-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-100"><p class="t-label text-emerald-800 mb-1">디자인 시사점</p><p class="t-small text-emerald-950 prose-ko">${esc(x.designImplication)}</p></div>${evidenceBlock(x.evidenceIds,2)}<button type="button" onclick="Actions.selectUx('${escAttr(x.id)}')" class="w-full mt-5 py-3.5 rounded-xl font-bold ${on?"bg-[#047857] text-white":"bg-[#052e2b] text-white"}">${on?"선택됨":"이 이슈 선택"}</button></section>`}).join("")}</div>${instructionBox("ux-note","Actions.generateUx(draft('ux-note'))","예: UX·제품디자인 관련성 기준을 더 엄격하게 적용해 다시 선별·군집화해 주세요")}${dock(`<p class="t-meta text-slate-600 text-center mb-3">${selectedUx()?`“${esc(selectedUx().name)}” 선택됨`:"이슈를 하나 선택해 주세요"}</p>${primaryBtn("5Whys 근본 원인 분석","Actions.generateRoots()",!selectedUx())}`)}</div>`}
+
+    function viewRoots(){return `<div class="page-top px-4 dock-space animate-fade-in">${header("근본 원인 분석",3)}<h2 class="t-h1 text-slate-900 mb-3">VOC 근거 기반 5Whys</h2><p class="t-small text-slate-600 mb-5">관점을 변경하면 근본 원인부터 새로 분석하고 기존 원인 선택·컨셉은 초기화합니다.</p><div class="mb-6">${perspectiveRow()}</div><div class="space-y-5">${state.rootCauses.map(rc=>{const on=rc.id===state.selectedCauseId;return `<section class="bg-white rounded-[2rem] p-6 border-2 shadow-md ${on?"border-emerald-600 ring-2 ring-emerald-600/15":"border-slate-200"}"><div><span class="inline-block px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 font-bold t-meta">Case ${rc.id} · 근거 강도 ${esc(rc.confidence)}</span><h3 class="case-title text-slate-900 mt-3">${esc(rc.title)}</h3></div><div class="mt-5 space-y-4">${rc.chain.map((s,i)=>`<div class="rounded-2xl bg-slate-50 border border-slate-200 p-4"><p class="t-h3 text-slate-900">Why ${i+1}. ${esc(s.why)}</p><p class="t-small text-slate-700 mt-1">→ ${esc(s.answer)}</p><p class="t-meta text-emerald-800 font-bold mt-2">핵심 · ${esc(s.insight)}</p></div>`).join("")}</div><div class="mt-5 pt-5 border-t border-slate-200"><span class="t-label text-emerald-800">ROOT CAUSE HYPOTHESIS</span><p class="t-h3 text-slate-900 mt-2 prose-ko">${esc(rc.realCause)}</p></div><button type="button" onclick="Actions.selectCause(${rc.id})" class="w-full mt-5 py-3.5 rounded-xl font-bold ${on?"bg-[#047857]":"bg-[#052e2b]"} text-white">${on?"선택됨":"이 원인 선택"}</button></section>`}).join("")}</div>${instructionBox("root-note","Actions.generateRoots(null,draft('root-note'))","예: 행동 습관보다 정보 구조의 구조적 원인을 더 깊게 파고들어 주세요")}${dock(`<p class="t-meta text-slate-600 text-center mb-3">${selectedCause()?`Case ${selectedCause().id} 선택됨`:"근본 원인 하나를 선택해 주세요"}</p>${primaryBtn("디자인 컨셉 방향 도출","Actions.generateConcepts()",!selectedCause())}`)}</div>`}
+
+    function viewConcepts(){const issue=selectedUx(),cause=selectedCause();return `<div class="page-top px-4 dock-space animate-fade-in">${header("컨셉 방향",4)}<h2 class="t-h1 text-slate-900 mb-3">근거가 연결된 디자인 컨셉</h2><p class="t-small text-slate-600 mb-5">실제 VOC → UX 이슈 → 근본 원인 가설 → 컨셉의 연결을 유지합니다. 관점을 바꾸면 원인 분석부터 다시 수행합니다.</p><section class="bg-emerald-50 rounded-3xl p-5 border-2 border-emerald-200 mb-6"><p class="t-label text-emerald-800">분석 연결 구조</p><p class="t-small text-emerald-950 mt-2">${esc(issue?.name||"")} → ${esc(cause?.realCause||"")} → ${esc(state.perspective)}</p></section><div class="mb-6">${perspectiveRow()}</div><div class="space-y-5">${state.concepts.map((c,i)=>`<section class="bg-white rounded-[2rem] p-7 border-2 border-slate-200 shadow-md"><div><span class="inline-block px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-bold t-meta">컨셉 ${i+1}</span><h3 class="t-h2 text-slate-900 mt-3">${esc(c.title)}</h3></div><div class="mt-5"><p class="t-label text-emerald-800 mb-2">핵심 가치</p><p class="t-body text-slate-700 prose-ko">${esc(c.coreValue)}</p></div><div class="mt-5"><p class="t-label text-emerald-800 mb-2">디자인 컨셉</p><p class="t-body text-slate-700 prose-ko">${esc(c.concept)}</p></div><div class="mt-5"><p class="t-label text-emerald-800 mb-2">사용자 가치</p><p class="t-body text-slate-700 prose-ko">${esc(c.userValue)}</p></div>${c.actions.length?`<div class="mt-5 bg-[#052e2b] rounded-2xl p-5 text-white"><p class="t-label text-emerald-200 mb-3">전략 실행 항목</p><ul class="space-y-2">${c.actions.map(a=>`<li class="flex gap-2 t-small text-emerald-50"><span class="text-emerald-300">•</span><span>${esc(a)}</span></li>`).join("")}</ul></div>`:""}</section>`).join("")}</div>${instructionBox("concept-note","Actions.generateConcepts(draft('concept-note'))","예: 제품 UI에서 바로 검증 가능한 컨셉으로 더 구체화해 주세요")}${dock(reportDownloadBtn())}</div>`}
+
+    function buildReport(){
+      const L=[];L.push("=================================================="," USER VOICE INSIGHT LAB · 분석 종합 리포트","==================================================","");
+      L.push(`[데이터] ${state.sourceLabel} · 원본 ${state.sourceCount}건 / 분석 ${state.records.length}건`,"");
+      if(state.overall){L.push("[1. 전체 Voice 유사성 기반 Affinity 분석]","전체 Voice를 제외 없이, 사전 카테고리 없이 유사성만으로 군집화",state.overall.executiveSummary,"");state.overall.categories.forEach(c=>{L.push(`- ${c.name}`,c.summary,`  근거: ${c.evidenceIds.join(", ")}`,"")})}
+      if(state.ux){const selected=new Set((state.ux.issues||[]).flatMap(x=>x.evidenceIds||[])).size;const stats=state.ux.selectionStats||{total:state.records.length,selected,excluded:Math.max(0,state.records.length-selected)};L.push("[2. 독립 UX·제품디자인 Voice 선별 Affinity 분석]",`전체 ${stats.total}건 중 관련 Voice ${stats.selected}건 선별 · 비관련 ${stats.excluded}건 제외`,state.ux.overallSummary,"");state.ux.issues.forEach(x=>{L.push(`- ${x.name}`,x.summary,`  디자인 시사점: ${x.designImplication}`,`  근거: ${x.evidenceIds.join(", ")}`,"")})}
+      const issue=selectedUx();if(issue)L.push(`[선택 이슈] ${issue.name}`,issue.summary,"");
+      if(state.rootCauses.length){L.push(`[3. 5Whys · ${state.perspective}]`,"");state.rootCauses.forEach(rc=>{L.push(`Case ${rc.id}. ${rc.title}`,`근거: ${rc.evidenceIds.join(", ")}`);rc.chain.forEach((s,i)=>L.push(`Why ${i+1}. ${s.why}`,`→ ${s.answer}`,`핵심: ${s.insight}`));L.push(`Real Cause Hypothesis: ${rc.realCause}`,`근거 강도: ${rc.confidence}`,"")})}
+      const cause=selectedCause();if(cause)L.push(`[선택 근본 원인] ${cause.realCause}`,"");
+      if(state.concepts.length){L.push(`[4. 디자인 컨셉 · ${state.perspective}]`,"");state.concepts.forEach((c,i)=>{L.push(`컨셉 ${i+1}. ${c.title}`,`핵심 가치: ${c.coreValue}`,`디자인 컨셉: ${c.concept}`,`사용자 가치: ${c.userValue}`,`전략 실행 항목: ${c.actions.join(" / ")}`,`근거: ${c.evidenceIds.join(", ")}`,"")})}
+      L.push("[근거 VOC 원문]","");state.records.forEach(r=>L.push(`${r.id} | ${r.text}`));return L.join("\n");
+    }
+    async function copyText(txt,successMessage="전체 리포트를 복사했습니다."){try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(txt);else{const ta=document.createElement("textarea");ta.value=txt;ta.style.cssText="position:fixed;top:-1000px";document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove()}toast(successMessage,"ok")}catch(e){toast("클립보드 저장에 실패했습니다.","error")}}
+    function downloadText(txt,filename){const blob=new Blob([txt],{type:"text/plain;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);toast("리포트를 파일로 저장했습니다.","ok")}
+    function overlays(){let h="";if(state.isAnalyzing)h+=`<div class="fixed inset-0 z-[10000] bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center px-8 text-center max-w-[430px] mx-auto"><div class="spinner-ring mb-8"></div><h2 class="t-h2 text-[#052e2b] mb-3">${esc(state.loadingMsg||"AI 분석 중")}</h2><p class="t-small text-slate-600 mb-7">최대 1분 정도 걸릴 수 있습니다</p><button type="button" onclick="Actions.cancel()" class="px-7 py-3.5 rounded-2xl border-2 border-slate-300 text-slate-700 font-bold t-small">취소</button></div>`;if(state.errorMsg)h+=`<div class="fixed inset-0 z-[10002] flex items-center justify-center bg-black/50 px-6 backdrop-blur-sm"><div class="bg-white p-8 rounded-3xl w-full max-w-sm text-center shadow-2xl animate-scale-in"><i data-lucide="alert-triangle" class="text-red-600 mx-auto mb-4 w-12 h-12"></i><h2 class="t-h3 text-slate-900 mb-6">${esc(state.errorMsg)}</h2><button type="button" onclick="setState({errorMsg:null})" class="w-full bg-[#052e2b] text-white py-4 rounded-2xl font-bold">확인</button></div></div>`;if(state.evidenceModal){const ev=evidenceByIds(state.evidenceModal);h+=`<div class="fixed inset-0 z-[9000] flex items-center justify-center bg-black/55 p-5 backdrop-blur-sm"><div class="bg-white rounded-[2rem] w-full max-w-[390px] max-h-[86vh] flex flex-col shadow-2xl"><div class="flex items-center justify-between gap-3 px-6 pt-6 pb-4 border-b"><div class="min-w-0"><p class="t-label text-emerald-800">RAW VOC EVIDENCE</p><h3 class="t-h3 text-slate-900">근거 원문 ${ev.length}건</h3></div><div class="flex items-center gap-1 flex-shrink-0"><button type="button" onclick='Actions.copyEvidence(${JSON.stringify(state.evidenceModal)})' class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#052e2b] text-white font-bold t-meta whitespace-nowrap active:scale-95"><i data-lucide="clipboard-copy" class="w-4 h-4"></i>클립보드 저장</button><button type="button" aria-label="닫기" onclick="setState({evidenceModal:null})" class="p-2 rounded-full hover:bg-slate-100"><i data-lucide="x" class="w-6 h-6"></i></button></div></div><div class="overflow-y-auto p-5 space-y-3 no-scrollbar">${ev.map(r=>`<div class="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl"><span class="t-meta font-bold text-emerald-800">${r.id}</span><p class="t-small text-slate-800 mt-1">${esc(r.text)}</p></div>`).join("")}</div></div></div>`}return h}
+
+    function captureUI(){const el=document.activeElement;const f=(el&&el.id&&(el.tagName==="INPUT"||el.tagName==="TEXTAREA"||el.tagName==="SELECT"))?{id:el.id,start:el.selectionStart,end:el.selectionEnd}:null;return{focus:f,scrollY:window.scrollY}}
+    function restoreUI(s,reset){if(s.focus){const el=document.getElementById(s.focus.id);if(el){el.focus({preventScroll:true});try{el.setSelectionRange(s.focus.start,s.focus.end)}catch(e){}}}window.scrollTo(0,reset?0:s.scrollY)}
+    function syncLayout(){const page=document.querySelector(".dock-space,.page-top");if(!page)return;const head=document.querySelector("header.fixed"),bar=document.querySelector(".dock");page.style.paddingTop=((head?head.offsetHeight:56)+40)+"px";if(page.classList.contains("dock-space"))page.style.paddingBottom=((bar?bar.offsetHeight:150)+32)+"px"}
+    function body(){switch(state.step){case -1:return viewAuth();case 0:return viewHome();case 1:return viewInput();case 2:return state.overall?viewOverall():viewInput();case 3:return state.ux?viewUx():state.overall?viewOverall():viewInput();case 4:return state.rootCauses.length?viewRoots():state.ux?viewUx():viewInput();case 5:return state.concepts.length?viewConcepts():state.rootCauses.length?viewRoots():viewInput();default:return viewHome()}}
+    function render(resetScroll){const snap=captureUI();const root=document.getElementById("root");root.innerHTML=`<main class="w-full max-w-[430px] mx-auto min-h-screen bg-[#f5f8f6] shadow-[0_0_60px_rgba(5,46,43,.10)] relative">${body()}</main>${overlays()}`;if(window.lucide)window.lucide.createIcons();requestAnimationFrame(()=>{syncLayout();restoreUI(snap,resetScroll)})}
+
+    const VOC_HEADER_HINTS=["voc","voice","comment","comments","commenttext","review","reviews","feedback","response","answer","content","body","message","opinion","verbatim","utterance","transcript","댓글","댓글내용","고객의소리","사용자의견","사용자목소리","의견","리뷰","후기","피드백","응답","답변","내용","본문","인터뷰","발화","불만","문의"];
+    const META_HEADER_HINTS=["id","no","number","index","date","time","timestamp","name","user","email","url","link","country","region","age","gender","sex","rating","score","like","count","view","channel","video","작성자","이름","날짜","시간","국가","지역","연령","성별","평점","점수","좋아요","조회","링크","주소","아이디"];
+    const headerKey=(v)=>String(v??"").toLowerCase().replace(/[\s_\-./()[\]{}]+/g,"");
+    function headerHintScore(header){const key=headerKey(header);if(!key)return 0;let score=0;VOC_HEADER_HINTS.forEach((hint,i)=>{if(key===headerKey(hint))score=Math.max(score,i<6?140:110);else if(key.includes(headerKey(hint)))score=Math.max(score,i<6?115:85)});META_HEADER_HINTS.forEach(hint=>{const h=headerKey(hint);if(key===h)score-=110;else if(key.includes(h))score-=55});return score}
+    function readSheet(wb,name){
+      const ws=wb.Sheets[name];const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
+      if(!matrix.length)throw new Error("Sheet가 비어 있습니다.");
+      const width=Math.max(...matrix.map(r=>Array.isArray(r)?r.length:0));if(!width)throw new Error("Sheet에서 데이터를 찾지 못했습니다.");
+      let bestRow=-1,bestScore=-Infinity,bestVocHint=0,bestMetaHints=0;
+      matrix.slice(0,Math.min(12,matrix.length)).forEach((row,rowIndex)=>{
+        const cells=Array.from({length:width},(_,i)=>String(row?.[i]??"").trim()).filter(Boolean);if(!cells.length)return;
+        const vocHint=Math.max(0,...cells.filter(v=>v.length<=60).map(v=>headerHintScore(v)));const metaHints=cells.filter(v=>META_HEADER_HINTS.some(h=>headerKey(v)===headerKey(h))).length;
+        const shortUnique=new Set(cells.filter(v=>v.length<=60)).size;const score=vocHint*2+metaHints*18+shortUnique*3-rowIndex*1.5;
+        if(score>bestScore){bestRow=rowIndex;bestScore=score;bestVocHint=vocHint;bestMetaHints=metaHints}
+      });
+      const headerRow=(bestVocHint>0||bestMetaHints>=2)?bestRow:-1;
+      const rawHeaders=Array.from({length:width},(_,i)=>headerRow>=0?String(matrix[headerRow]?.[i]??"").trim()||`컬럼_${i+1}`:`컬럼_${i+1}`);
+      const used=new Map();const headers=rawHeaders.map(h=>{const n=(used.get(h)||0)+1;used.set(h,n);return n===1?h:`${h}_${n}`});
+      const rows=matrix.slice(headerRow>=0?headerRow+1:0).map(row=>{const obj={};headers.forEach((h,i)=>{obj[h]=row?.[i]??""});return obj}).filter(r=>headers.some(h=>String(r[h]??"").trim()));
+      return{headers,rows,headerRow};
+    }
+
+    function scoreVocColumn(sheetName,header,rows){
+      const values=rows.map(r=>String(r[header]??"").trim()).filter(Boolean).slice(0,1000);if(!values.length)return null;
+      const n=values.length;const avgLength=values.reduce((s,v)=>s+v.length,0)/n;
+      const textRatio=values.filter(v=>/[A-Za-z가-힣ㄱ-ㅎㅏ-ㅣぁ-んァ-ヶ一-龯]/.test(v)).length/n;
+      const sentenceRatio=values.filter(v=>v.length>=12&&/[A-Za-z가-힣ㄱ-ㅎㅏ-ㅣぁ-んァ-ヶ一-龯]/.test(v)).length/n;
+      const numericRatio=values.filter(v=>/^[\s\d.,+\-%:]+$/.test(v)).length/n;
+      const urlRatio=values.filter(v=>/^(?:https?:\/\/|www\.)/i.test(v)).length/n;
+      const uniqueRatio=new Set(values).size/n;const sheetHint=headerHintScore(sheetName)>0?28:0;
+      const score=headerHintScore(header)+sheetHint+Math.min(n,250)*.12+Math.min(avgLength,180)*.34+textRatio*34+sentenceRatio*38+uniqueRatio*8-numericRatio*85-urlRatio*55;
+      return{sheetName,header,rows,values,score,avgLength};
+    }
+
+    function detectVocSource(wb){
+      const candidates=[];
+      wb.SheetNames.forEach(sheetName=>{try{const parsed=readSheet(wb,sheetName);parsed.headers.forEach(header=>{const candidate=scoreVocColumn(sheetName,header,parsed.rows);if(candidate)candidates.push(candidate)})}catch(e){console.warn(`Sheet 자동 탐색 제외: ${sheetName}`,e)}});
+      candidates.sort((a,b)=>b.score-a.score||b.values.length-a.values.length||b.avgLength-a.avgLength);
+      const best=candidates[0];if(!best||best.values.length<1)throw new Error("VOC가 포함된 시트와 열을 자동으로 찾지 못했습니다.");
+      const texts=[],meta=[];best.rows.forEach(row=>{const value=String(row[best.header]??"").trim();if(value){texts.push(value);meta.push(compactMeta(row,best.header))}});
+      const made=makeRecordsFromTexts(texts,meta);if(!made.records.length)throw new Error("자동으로 찾은 열에서 VOC를 읽지 못했습니다.");
+      return{sheetName:best.sheetName,column:best.header,made,score:best.score};
+    }
+
+    function compactMeta(row, excluded){
+      const out={}; let count=0;
+      for(const [k,v] of Object.entries(row||{})){
+        if(k===excluded) continue;
+        const t=String(v??"").trim(); if(!t) continue;
+        out[k]=cut(t,160); if(++count>=8) break;
+      }
+      return Object.keys(out).length?out:null;
+    }
+
+    const Actions={
+      cancel(){if(activeController)activeController.abort()},
+      async validateKey(){const input=document.getElementById("api-input");const key=(input?.value.trim())||state.apiKey;if(!key){setState({errorMsg:"API 키를 입력해 주세요."});return}setState({apiKey:key});const ok=await withLoading("키를 확인하는 중",()=>callGemini('Return only JSON: {"status":"OK"}'));if(ok){sessionStorage.setItem(CONFIG.SESSION_KEY_API,key);setState({step:0})}else{sessionStorage.removeItem(CONFIG.SESSION_KEY_API);setState({apiKey:""})}},
+      resetApi(){persist(false);sessionStorage.removeItem(CONFIG.SESSION_KEY_API);setState({apiKey:"",step:-1})},
+      goHome(){persist(false);setState({step:0})},
+      startNewProject(){Object.keys(drafts).forEach(k=>delete drafts[k]);lastSaved="";setState({...blankProject(),step:1,errorMsg:null})},
+      openProject(id){const p=Store.list().find(x=>x.id===id);if(!p){toast("프로젝트를 찾을 수 없습니다.","error");return}Object.keys(drafts).forEach(k=>delete drafts[k]);const d={...blankProject(),...p.data,projectId:p.id};lastSaved=JSON.stringify(p.data);setState({...d,step:lastCompleted(d)})},
+      deleteProject(id){if(!confirm("이 프로젝트를 삭제하시겠습니까?"))return;Store.remove(id);if(state.projectId===id)lastSaved="";render(false)},
+      saveNow(){const r=persist(true);if(r==="ok")toast("진행 상태를 저장했습니다.","ok");else if(r==="skip")toast("저장할 분석 내용이 아직 없습니다.","info")},
+      goNext(){const n=state.step+1;if(stepReady(n))setState({step:n});else toast("다음 단계 결과를 먼저 생성해 주세요.","info")},
+      copyReport(){copyText(buildReport())},downloadReport(){downloadText(buildReport(),`VOC_Insight_${new Date().toISOString().slice(0,10)}.txt`)},
+      showEvidence(ids){setState({evidenceModal:ids})},
+      copyEvidence(ids){const ev=evidenceByIds(ids);if(!ev.length){toast("저장할 근거 원문이 없습니다.","warn");return}const text=[`[근거 원문 ${ev.length}건]`,"",...ev.flatMap(r=>[r.id,r.text,""])].join("\n").trim();copyText(text,"근거 원문을 클립보드에 저장했습니다.")},
+      onRawInput(v){if(v!==state.rawText){state.rawText=v;state.records=[];state.sourceCount=0;state.sourceType="text";state.sourceLabel="직접 입력";invalidateFromData();window.__state=state}},
+      applyRawText(){const v=document.getElementById("raw-input")?.value??state.rawText;const parsed=parseTextRecords(v);if(!parsed.records.length){setState({errorMsg:"분석할 VOC를 입력해 주세요."});return}state.rawText=v;invalidateFromData();setState({records:parsed.records,sourceCount:parsed.sourceCount,sourceType:"text",sourceLabel:"직접 입력",overall:null,ux:null,rootCauses:[],concepts:[]});toast(`${parsed.records.length}건의 VOC를 준비했습니다.`,"ok")},
+      async uploadFile(e){const f=e.target.files?.[0];if(!f)return;if(f.size>CONFIG.MAX_FILE_BYTES){setState({errorMsg:"파일이 25MB를 초과합니다."});return}try{const ext=(f.name.split(".").pop()||"").toLowerCase();if(ext==="txt"){const text=await f.text();state.rawText=text;const parsed=parseTextRecords(text);invalidateFromData();setState({records:parsed.records,sourceCount:parsed.sourceCount,sourceType:"file",sourceLabel:f.name,importFileName:f.name,importSheetName:"",importHeaders:[],importSelectedColumn:"",overall:null,ux:null,rootCauses:[],concepts:[]});toast(`${parsed.records.length}건의 VOC를 준비했습니다.`,"ok");return}if(!["xlsx","xls","csv"].includes(ext))throw new Error("XLSX, XLS, CSV, TXT 파일만 지원합니다.");const wb=ext==="csv"?XLSX.read(await f.text(),{type:"string",codepage:65001}):XLSX.read(await f.arrayBuffer(),{type:"array"});if(!wb.SheetNames.length)throw new Error("Sheet를 찾지 못했습니다.");const detected=detectVocSource(wb);invalidateFromData();setState({rawText:"",records:detected.made.records,sourceCount:detected.made.sourceCount,sourceType:"file",sourceLabel:f.name,importFileName:f.name,importSheetName:detected.sheetName,importHeaders:[],importSelectedColumn:detected.column,overall:null,ux:null,rootCauses:[],concepts:[]});toast(`${detected.made.records.length}건의 VOC를 자동으로 준비했습니다.`,"ok")}catch(err){setState({errorMsg:err.message||"파일을 처리하지 못했습니다."})}finally{e.target.value=""}},
+      async generateOverall(note){if(!state.records.length)return;const res=await withLoading("전체 VOC Affinity 분석 중",()=>callGemini(PROMPTS.OVERALL(state.records,note)));if(!res)return;try{const overall=normOverall(res);invalidateFromOverall();clearDrafts("overall-note");setState({overall,step:2,ux:null,rootCauses:[],concepts:[]})}catch(e){setState({errorMsg:e.message})}},
+      async generateUx(note){if(!state.records.length)return;const prompt=PROMPTS.UX(state.records,note);const res=await withLoading("전체 Voice에서 UX·제품디자인 관련 Voice를 분석하는 중",()=>callKoreanJson(prompt,uxNeedsKorean));if(!res)return;try{const ux=normUx(res);invalidateFromUx();clearDrafts("ux-note");setState({ux,step:3,selectedUxId:null,rootCauses:[],concepts:[]})}catch(e){setState({errorMsg:e.message})}},
+      selectUx(id){if(id!==state.selectedUxId){invalidateFromUx();setState({selectedUxId:id,rootCauses:[],concepts:[]})}},
+      async generateRoots(perspective,note){const issue=selectedUx();if(!issue)return;const p=perspective||state.perspective;const evidence=evidenceByIds(issue.evidenceIds);const res=await withLoading(`${p}에서 근본 원인을 분석하는 중`,()=>callGemini(PROMPTS.ROOT(issue,evidence,p,note)));if(!res)return;try{const roots=normRoots(res);invalidateFromRoot();clearDrafts("root-note");setState({perspective:p,rootCauses:roots,selectedCauseId:null,concepts:[],step:4})}catch(e){setState({errorMsg:e.message})}},
+      changePerspective(p){if(p===state.perspective)return;const issue=selectedUx();if(!issue){setState({perspective:p});return}Actions.generateRoots(p)},
+      selectCause(id){if(id!==state.selectedCauseId)setState({selectedCauseId:id,concepts:[]})},
+      async generateConcepts(note){const issue=selectedUx(),cause=selectedCause();if(!issue||!cause)return;const evidence=evidenceByIds([...new Set([...(issue.evidenceIds||[]),...(cause.evidenceIds||[])])]);const prompt=PROMPTS.CONCEPT(issue,evidence,cause,state.perspective,note);const res=await withLoading("VOC 근거와 근본 원인을 연결해 컨셉을 만드는 중",()=>callKoreanJson(prompt,conceptsNeedKorean));if(!res)return;try{let concepts=normConcepts(res);const fallbackIds=normalizeIds(cause.evidenceIds);concepts=concepts.map(c=>({...c,evidenceIds:c.evidenceIds.length?c.evidenceIds:fallbackIds}));clearDrafts("concept-note");setState({concepts,step:5})}catch(e){setState({errorMsg:e.message})}}
+    };
+    window.Actions=Actions;
+
+    function lastCompleted(d){if(d.concepts?.length)return 5;if(d.rootCauses?.length)return 4;if(d.ux)return 3;if(d.overall)return 2;return 1}
+
+    // 5초 자동 저장. API 키와 업로드 원본 workbook은 snapshot에 포함하지 않습니다.
+    setInterval(()=>persist(false),CONFIG.AUTOSAVE_MS);
+    window.addEventListener("beforeunload",()=>persist(false));
+    document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")persist(false)});
+
+    // 세션 API 키가 있으면 바로 홈으로, 없으면 인증 화면으로 시작합니다.
+    if(state.apiKey) state.step=0;
+    render(true);
+  })();
+  </script>
+</body>
+</html>
